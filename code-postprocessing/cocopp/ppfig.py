@@ -36,15 +36,26 @@ HtmlPage = enum('NON_SPECIFIED', 'ONE', 'MANY', 'PPRLDMANY_BY_GROUP', 'PPRLDMANY
                 'PPTABLE', 'PPTABLE2', 'PPTABLES', 'PPRLDISTR', 'PPRLDISTR2', 'PPLOGLOSS', 'PPSCATTER', 'PPFIGS')
 
 
-def save_figure(filename, algorithm=None, format=None,
-                layout_rect=(0, 0, 0.99, 1), bbox_inches=None):
+def save_figure(filename,
+                algorithm=None,
+                format=None,
+                layout_rect=(0, 0, 0.99, 1),
+                bbox_inches=None,
+                subplots_adjust=None):
     """Save figure into an image file.
 
     `format` is a `str` denoting a file type known to `pylab.savefig`, like 
     "svg", or `None` in which case the defaults from `genericsettings` are
     applied.
     
-    If `layout_rect`, the `pylab.tight_layout` method is invoked.
+    If `layout_rect`, the `pylab.tight_layout` method is invoked with
+    matplotlib version < 3.
+
+    `subplots_adjust` contains keyword arguments to call the matplotlib
+    function with the same name with matplotlib version >= 3. The function
+    grants relative additional space of size bottom, left, 1 - top, and
+    1 - right by shrinking the printed axes. It is used to prevent outside
+    text being cut away.
 
     'tight' `bbox_inches` lead possibly to (slightly) different figure
     sizes in each case, which is undesirable.
@@ -62,7 +73,10 @@ def save_figure(filename, algorithm=None, format=None,
              color='0.5',
              transform=plt.gca().transAxes)
     for format in fig_formats:
-        if layout_rect:
+        if plt.matplotlib.__version__[0] >= '3' and subplots_adjust:
+            # subplots_adjust is used in pprldmany.main with bottom=0.135, right=0.735
+            plt.subplots_adjust(**subplots_adjust)
+        elif layout_rect:
             try:
                 # possible alternative:
                 # bbox = gcf().get_tightbbox(gcf().canvas.get_renderer())
@@ -193,25 +207,17 @@ def save_folder_index_file(filename, image_file_extension):
                       'Runtime distribution for selected targets and f-distributions')
 
     # add the ECDFs aggregated over all functions in all dimensions at the end:
-    if os.path.isfile(os.path.join(current_dir, 'pprldmany_02D_noiselessall.svg')):  # weird way to decide what to plot
+    if os.path.isfile(os.path.join(current_dir,
+                                   testbedsettings.current_testbed.plots_on_main_html_page[0])):
         links += "<H2> %s </H2>\n" % ' Runtime distributions (ECDFs) over all targets'
-        links += add_image('pprldmany_02D_noiselessall.svg', True, 220)
-        links += add_image('pprldmany_03D_noiselessall.svg', True, 220)
-        links += add_image('pprldmany_05D_noiselessall.svg', True, 220) + ' <br />'
-        links += add_image('pprldmany_10D_noiselessall.svg', True, 220)
-        links += add_image('pprldmany_20D_noiselessall.svg', True, 220)
-        if os.path.isfile(os.path.join(current_dir, 'pprldmany_40D_noiselessall.svg')):
-            links += add_image('pprldmany_40D_noiselessall.svg', True, 220)
-    if os.path.isfile(os.path.join(current_dir, 'pprldmany_02D_nzall.svg')):  # weird way to decide what to plot
-        links += "<H2> %s </H2>\n" % ' Runtime distributions (ECDFs) over all targets'
-        links += add_image('pprldmany_02D_nzall.svg', True, 220)
-        links += add_image('pprldmany_03D_nzall.svg', True, 220)
-        links += add_image('pprldmany_05D_nzall.svg', True, 220) + ' <br />'
-        links += add_image('pprldmany_10D_nzall.svg', True, 220)
-        links += add_image('pprldmany_20D_nzall.svg', True, 220)
-        if os.path.isfile(os.path.join(current_dir, 'pprldmany_40D_nzall.svg')):
-            links += add_image('pprldmany_40D_nzall.svg', True, 220)
-
+        i = 1 # counter to only put three plots per line
+        for plotname in testbedsettings.current_testbed.plots_on_main_html_page:
+            if os.path.isfile(os.path.join(current_dir, plotname)):
+                if i % 3 == 0:
+                    links += add_image(plotname, True, 220) + ' <br />'
+                else:
+                    links += add_image(plotname, True, 220)
+                i = i + 1
 
     lines = []
     with open(filename) as infile:
@@ -244,15 +250,15 @@ def get_rld_link(current_dir):
 
     file_name = '%s.html' % genericsettings.pprldmany_file_name
     links += add_link(current_dir, folder, file_name,
-                      pprldmany_per_func_dim_header, dimension=20)
+                      pprldmany_per_func_dim_header, dimension=testbedsettings.current_testbed.goto_dimension)
 
     file_name = '%s.html' % genericsettings.pprldmany_group_file_name
     links += add_link(current_dir, folder, file_name,
-                      pprldmany_per_group_dim_header, dimension=20)
+                      pprldmany_per_group_dim_header, dimension=testbedsettings.current_testbed.goto_dimension)
 
     file_name = '%s.html' % genericsettings.pprldmany_file_name
     links += add_link(current_dir, '', file_name,
-                      pprldmany_per_group_dim_header, dimension=20)
+                      pprldmany_per_group_dim_header, dimension=testbedsettings.current_testbed.goto_dimension)
 
     return links
 
@@ -295,7 +301,6 @@ def save_single_functions_html(filename,
         first_function_number = testbedsettings.current_testbed.first_function_number
         last_function_number = testbedsettings.current_testbed.last_function_number
         caption_string_format = '<p/>\n%s\n<p/><p/>'
-        reference_algorithm_exists = testbedsettings.current_testbed.reference_algorithm_filename != ''
 
         if htmlPage in (HtmlPage.ONE, HtmlPage.MANY):
             f.write(links_placeholder)
@@ -353,11 +358,13 @@ def save_single_functions_html(filename,
             f.write(caption_string_format % htmldesc.getValue('##' + key + '##'))
 
         elif htmlPage is HtmlPage.PPTABLES:
-            write_tables(f, caption_string_format, reference_algorithm_exists, 'pptablesHtml', 'bbobpptablesmanylegend', dimensions)
+            write_tables(f, caption_string_format,
+                         testbedsettings.current_testbed.reference_algorithm_filename,
+                         'pptablesHtml', 'bbobpptablesmanylegend', dimensions)
 
         elif htmlPage is HtmlPage.PPRLDISTR:
             names = ['pprldistr', 'ppfvdistr']
-            dimensions = genericsettings.rldDimsOfInterest
+            dimensions = testbedsettings.current_testbed.rldDimsOfInterest
 
             header_ecdf = ' Empirical cumulative distribution functions (ECDF)'
             f.write("<H2> %s </H2>\n" % header_ecdf)
@@ -375,7 +382,7 @@ def save_single_functions_html(filename,
 
         elif htmlPage is HtmlPage.PPRLDISTR2:
             names = ['pprldistr', 'pplogabs']
-            dimensions = genericsettings.rldDimsOfInterest
+            dimensions = testbedsettings.current_testbed.rldDimsOfInterest
 
             header_ecdf = 'Empirical cumulative distribution functions ' \
                          '(ECDFs) per function group'
@@ -394,8 +401,8 @@ def save_single_functions_html(filename,
             f.write(caption_string_format % htmldesc.getValue('##' + key + '##'))
 
         elif htmlPage is HtmlPage.PPLOGLOSS:
-            dimensions = genericsettings.rldDimsOfInterest
-            if reference_algorithm_exists:
+            dimensions = testbedsettings.current_testbed.rldDimsOfInterest
+            if testbedsettings.current_testbed.reference_algorithm_filename:
                 current_header = 'aRT loss ratios'
                 f.write("<H2> %s </H2>\n" % current_header)
 
@@ -642,9 +649,9 @@ def logxticks(limits=[-np.inf, np.inf]):
     plt.xlim(xlims[0], xlims[1])
     # TODO: check the xlabel is changed accordingly?
 
-
 def beautify():
-    """ Customize a figure by adding a legend, axis label, etc."""
+    """ deprecated method - not used anywhere
+        Customize a figure by adding a legend, axis label, etc."""
     # TODO: what is this function for?
     # Input checking
 
@@ -656,7 +663,7 @@ def beautify():
     axisHandle.grid(True)
 
     _ymin, ymax = plt.ylim()
-    plt.ylim(ymin=10 ** -0.2, ymax=ymax)  # Set back the default maximum.
+    plt.ylim(10 ** -0.2, ymax)  # Set back the default maximum.
 
     tmp = axisHandle.get_yticks()
     tmp2 = []
@@ -859,7 +866,7 @@ def get_plotting_styles(algorithms, only_foreground=False):
 
     foreground_algorithms = [key for key in algorithms
                              if key in genericsettings.foreground_algorithm_list]
-    foreground_algorithms.sort()
+    # foreground_algorithms.sort()  # sorting is not desired, we want to be able to control the order!
     plotting_styles.append(PlottingStyle({},
                                          {},
                                          foreground_algorithms if len(foreground_algorithms) > 0 else algorithms,

@@ -46,8 +46,6 @@ from .. import toolsdivers
 from .. import pproc
 from .. import captions
 
-dimensions = (2, 3, 5, 10, 20, 40)
-
 # formattings
 markersize = 14  # modified in config.py
 markersize_addon_beyond_maxevals = -6
@@ -72,12 +70,15 @@ def prepare_figure_caption():
 
     caption_finish = r"""Markers on the upper or right edge indicate that the respective target
         value was never reached. Markers represent dimension:
-        2:{\color{cyan}+},
-        3:{\color{green!45!black}$\triangledown$},
-        5:{\color{blue}$\star$},
-        10:$\circ$,
-        20:{\color{red}$\Box$},
-        40:{\color{magenta}$\Diamond$}. """
+        %d:{\color{cyan}+},
+        %d:{\color{green!45!black}$\triangledown$},
+        %d:{\color{blue}$\star$},
+        %d:$\circ$,
+        %d:{\color{red}$\Box$},
+        %d:{\color{magenta}$\Diamond$}. """ % tuple(testbedsettings.current_testbed.dimensions_to_display[:6])
+                                                                      # the [:6] is a hack for the case of
+                                                                      # both bbob and bbob-largescale data
+                                                                      # post-processed together
 
 
     if genericsettings.runlength_based_targets:
@@ -104,8 +105,6 @@ def beautify():
     a = plt.gca()
     a.set_xscale('log')
     a.set_yscale('log')
-    #a.set_xlabel('aRT0')
-    #a.set_ylabel('aRT1')
     xmin, xmax = plt.xlim()
     ymin, ymax = plt.ylim()
     minbnd = min(xmin, ymin)
@@ -163,6 +162,8 @@ def main(dsList0, dsList1, outputdir, settings):
         linewidth = linewidth_default
 
     funInfos = ppfigparam.read_fun_infos()    
+
+    dimensions = testbedsettings.current_testbed.dimensions_to_display
 
     for f in funcs:
         dictDim0 = dictFunc0[f].dictByDim()
@@ -380,6 +381,11 @@ def main(dsList0, dsList1, outputdir, settings):
 
             #plt.axvline(entry0.mMaxEvals(), ls='--', color=colors[i])
             #plt.axhline(entry1.mMaxEvals(), ls='--', color=colors[i])
+
+        # set x- and y-labels based on which algorithm is compared
+        a = plt.gca()
+        a.set_xlabel('log10(ERT of %s)' % dsList0[0].algId)
+        a.set_ylabel('log10(ERT of %s)' % dsList1[0].algId)
 
         fontSize = getFontSize(funInfos.values())
         if f in funInfos.keys():        

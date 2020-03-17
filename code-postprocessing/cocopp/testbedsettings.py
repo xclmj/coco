@@ -1,7 +1,8 @@
+from __future__ import absolute_import
+
 import os
 import numpy as np
 import warnings
-from six import advance_iterator
 
 from . import dataformatsettings
 
@@ -12,15 +13,24 @@ scenario_biobjfixed = 'biobjfixed'
 scenario_biobjrlbased = 'biobjrlbased'
 scenario_biobjextfixed = 'biobjextfixed'
 scenario_constrainedfixed = 'constrainedfixed'
+scenario_largescalefixed = 'largescalefixed'
+scenario_mixintfixed = 'mixintfixed'
+scenario_biobjmixintfixed = 'biobjmixintfixed'
+
 all_scenarios = [scenario_rlbased, scenario_fixed,
                  scenario_biobjfixed, scenario_biobjrlbased,
-                 scenario_biobjextfixed, scenario_constrainedfixed]
+                 scenario_biobjextfixed, scenario_constrainedfixed,
+                 scenario_largescalefixed, scenario_mixintfixed,
+                 scenario_biobjmixintfixed]
 
 testbed_name_single = 'bbob'
 testbed_name_single_noisy = 'bbob-noisy'
 testbed_name_bi = 'bbob-biobj'
 testbed_name_bi_ext = 'bbob-biobj-ext'
 testbed_name_cons = 'bbob-constrained'
+testbed_name_ls = 'bbob-largescale'
+testbed_name_mixint = 'bbob-mixint'
+testbed_name_bi_mixint = 'bbob-biobj-mixint'
 
 default_suite_single = 'bbob'
 default_suite_single_noisy = 'bbob-noisy'
@@ -31,6 +41,9 @@ default_testbed_single_noisy = 'GECCOBBOBNoisyTestbed'
 default_testbed_bi = 'GECCOBiObjBBOBTestbed'
 default_testbed_bi_ext = 'GECCOBiObjExtBBOBTestbed'
 default_testbed_cons = 'CONSBBOBTestbed'
+default_testbed_ls = 'BBOBLargeScaleTestbed'
+default_testbed_mixint = 'GECCOBBOBMixintTestbed'
+default_testbed_bi_mixint = 'GECCOBBOBBiObjMixintTestbed'
 
 current_testbed = None
 
@@ -39,7 +52,11 @@ suite_to_testbed = {
     default_suite_single_noisy: default_testbed_single_noisy,
     default_suite_bi: default_testbed_bi,
     'bbob-biobj-ext': default_testbed_bi_ext,
-    'bbob-constrained': default_testbed_cons
+    'bbob-constrained': default_testbed_cons,
+    'bbob-largescale': default_testbed_ls,
+    'bbob-mixint': default_testbed_mixint,
+    'bbob-biobj-mixint': default_testbed_bi_mixint,
+    'bbob-JOINED-bbob-largescale': 'BBOBLargeScaleJOINEDTestbed',
 }
 
 
@@ -151,6 +168,8 @@ class Testbed(object):
     """
 
     reference_algorithm_displayname = None
+    instances_are_uniform = True
+    "False for biobjective suites, used (so far only) for simulated restarts in pprldmany"
 
     def info(self, fun_number=None):
         """info on the testbed if ``fun_number is None`` or one-line info
@@ -179,6 +198,18 @@ class Testbed(object):
                 if name.endswith(suffix):
                     setattr(self, name, class_(getattr(self, name)))
 
+    def filter(self, dsl):
+        """
+        Interface to make DataSetList or list of DataSets dsl
+        consistent with the retrieved Testbed class(es) in rungenericmany.
+        
+        Initially used for making bbob-biobj and bbob-biobj-ext suites
+        consistent.
+        """
+        return dsl
+
+
+
 
 class GECCOBBOBTestbed(Testbed):
     """Testbed used in the GECCO BBOB workshops 2009, 2010, 2012, 2013, 2015,
@@ -188,12 +219,17 @@ class GECCOBBOBTestbed(Testbed):
     shortinfo_filename = 'bbob-benchmarkshortinfos.txt'
     pptable_target_runlengths = [0.5, 1.2, 3, 10, 50]  # used in config for expensive setting
     pptable_targetsOfInterest = (10, 1, 1e-1, 1e-2, 1e-3, 1e-5, 1e-7)  # for pptable and pptablemany
+    dimsOfInterest = (5, 20)
 
     settings = dict(
         info_filename='bbob-benchmarkinfos.txt',
         shortinfo_filename=shortinfo_filename,
         name=testbed_name_single,
         short_names=get_short_names(shortinfo_filename),
+        dimensions_to_display=(2, 3, 5, 10, 20, 40),
+        goto_dimension=20,  # auto-focus on this dimension in html
+        rldDimsOfInterest=dimsOfInterest,
+        tabDimsOfInterest=dimsOfInterest,
         hardesttargetlatex='10^{-8}',  # used for ppfigs, pptable and pptables
         ppfigs_ftarget=1e-8,  # to set target runlength in expensive setting, use genericsettings.target_runlength
         ppfig2_ftarget=1e-8,
@@ -225,7 +261,7 @@ class GECCOBBOBTestbed(Testbed):
         # independently of the testbed constrained to the data we actually
         # see, that is, not assigned here?
         number_of_points=5,  # nb of target function values for each decade
-        instancesOfInterest=None  # None: consider all instances
+        instancesOfInterest=None,  # None: consider all instances
         # .instancesOfInterest={1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1,
         #                   10: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1,
         #                   21: 1, 22: 1, 23: 1, 24: 1, 25: 1, 26: 1, 27: 1, 28: 1, 29: 1, 30: 1,
@@ -233,6 +269,9 @@ class GECCOBBOBTestbed(Testbed):
         #                   41: 1, 42: 1, 43: 1, 44: 1, 45: 1, 46: 1, 47: 1, 48: 1, 49: 1, 50: 1,
         #                   51: 1, 52: 1, 53: 1, 54: 1, 55: 1, 56: 1, 57: 1, 58: 1, 59: 1, 60: 1} # consider only 2009-2016 instances
         # .instancesOfInterest={1: 1, 2: 1}
+        plots_on_main_html_page = ['pprldmany_02D_noiselessall.svg', 'pprldmany_03D_noiselessall.svg',
+                               'pprldmany_05D_noiselessall.svg', 'pprldmany_10D_noiselessall.svg',
+                               'pprldmany_20D_noiselessall.svg', 'pprldmany_40D_noiselessall.svg'],
     ) 
 
     def __init__(self, targetValues):
@@ -255,6 +294,85 @@ class GECCOBBOBTestbed(Testbed):
         # in config:
         self.instantiate_attributes(targetValues)
 
+
+    def filter(self, dsl):
+        """ Updates the dimensions in all of dsl's entries
+            if both bbob and bbob-largescale data is in dsl
+            and sets the corresponding suite to
+            BBOBLargeScaleJOINEDTestbed in this case.
+            
+            Returns the filtered list as a flat list.
+            
+            Gives an error if the data in the given
+            list of DataSets dsl is not compatible.
+        """
+        global current_testbed
+
+        # find out whether we have to do something:
+        bbob_detected = False
+        bbob_largescale_detected = False
+        for ds in dsl:
+            detected_suite = ds.get_suite()
+            if detected_suite == 'bbob':
+                bbob_detected = True
+            elif detected_suite == 'bbob-largescale':
+                bbob_largescale_detected = True
+            elif detected_suite == 'bbob-JOINED-bbob-largescale':
+                continue
+            else:
+                raise ValueError("Data from %s suite is not "
+                                 "compatible with other data from "
+                                 "the bbob and/or bbob-largescale "
+                                 "suites" % str(ds.get_suite()))
+
+        # now update all elements in flattened list if needed:
+        if bbob_detected and bbob_largescale_detected:
+            for ds in dsl:
+                ds.get_suite = lambda: 'bbob-JOINED-bbob-largescale'
+                ds.testbed_name = 'bbob-largescale'  # used mainly for display in plots
+            # make sure that the right testbed is loaded:
+
+        return dsl
+
+
+
+
+
+class BBOBLargeScaleJOINEDTestbed(GECCOBBOBTestbed):
+    """Union of GECCOBBOBTestbed and BBOBLargeScaleTestbed with all their dimensions."""
+
+    dimsOfInterest = (80, 320)
+
+    settings = dict(
+        dimensions_to_display=(2, 3, 5, 10, 20, 40, 80, 160, 320, 640),
+        goto_dimension=160,  # auto-focus on this dimension in html
+        reference_algorithm_filename=None,
+        reference_algorithm_displayname=None,
+        plots_on_main_html_page=['pprldmany_02D_noiselessall.svg', 'pprldmany_03D_noiselessall.svg',
+                                 'pprldmany_05D_noiselessall.svg', 'pprldmany_10D_noiselessall.svg',
+                                 'pprldmany_20D_noiselessall.svg', 'pprldmany_40D_noiselessall.svg',
+                                 'pprldmany_80D_noiselessall.svg', 'pprldmany_160D_noiselessall.svg',
+                                 'pprldmany_320D_noiselessall.svg', 'pprldmany_640D_noiselessall.svg'],
+
+    )
+
+    def __init__(self, targetValues):
+        super(BBOBLargeScaleJOINEDTestbed, self).__init__(targetValues)
+
+        if 11 < 3:
+            # override settings if needed...
+            self.settings.reference_algorithm_filename = ''  # TODO: prepare add correct reference algo
+                                                             # with all dimensions 2..640
+            self.settings.reference_algorithm_displayname = None  # TODO: add correct algo here
+
+        for key, val in BBOBLargeScaleJOINEDTestbed.settings.items():
+            setattr(self, key, val)
+            if 'target_values' in key or 'targetsOfInterest' in key:
+                self.instantiate_attributes(targetValues, [key])
+
+    def filter(self, dsl):
+        """ Does nothing but overwriting the method from superclass"""
+        return dsl
 
 
 class CONSBBOBTestbed(GECCOBBOBTestbed):
@@ -299,6 +417,7 @@ class CONSBBOBTestbed(GECCOBBOBTestbed):
         # Isn't the point that the data_format should be set
         # independently of the testbed constrained to the data we actually
         # see, that is, not assigned here?
+
     )
 
 
@@ -316,6 +435,9 @@ class CONSBBOBTestbed(GECCOBBOBTestbed):
             if 'target_values' in key or 'targetsOfInterest' in key:
                 self.instantiate_attributes(target_values, [key])
 
+    def filter(self, dsl):
+        """ Does nothing but overwriting the method from superclass"""
+        return dsl
 
 
 class GECCOBBOBNoisyTestbed(GECCOBBOBTestbed):
@@ -334,7 +456,11 @@ class GECCOBBOBNoisyTestbed(GECCOBBOBTestbed):
         first_function_number=101,
         last_function_number=130,
         reference_algorithm_filename='refalgs/best2009-bbob-noisy.tar.gz',
-        reference_algorithm_displayname='best 2009'  # TODO: should be read in from data set in reference_algorithm_filename
+        reference_algorithm_displayname='best 2009',  # TODO: should be read in from data set in reference_algorithm_filename
+        plots_on_main_html_page = ['pprldmany_02D_nzall.svg', 'pprldmany_03D_nzall.svg',
+                                   'pprldmany_05D_nzall.svg', 'pprldmany_10D_nzall.svg',
+                                   'pprldmany_20D_nzall.svg', 'pprldmany_40D_nzall.svg'],
+
     )
     
     def __init__(self, target_values):
@@ -351,6 +477,9 @@ class GECCOBBOBNoisyTestbed(GECCOBBOBTestbed):
                 self.instantiate_attributes(target_values, [key])
 
 
+    def filter(self, dsl):
+        """ Does nothing but overwriting the method from superclass"""
+        return dsl
 
 
 class GECCOBiObjBBOBTestbed(Testbed):
@@ -361,12 +490,17 @@ class GECCOBiObjBBOBTestbed(Testbed):
     shortinfo_filename = 'bbob-biobj-benchmarkshortinfos.txt'
     pptable_target_runlengths = [0.5, 1.2, 3, 10, 50] # used in config for expensive setting
     pptable_targetsOfInterest = (10, 1, 1e-1, 1e-2, 1e-3, 1e-5, 1e-7) # for pptable and pptablemany
+    dimsOfInterest = (5, 20)
 
     settings = dict(
         info_filename='bbob-biobj-benchmarkinfos.txt',
         shortinfo_filename=shortinfo_filename,
         name=testbed_name_bi,
         short_names=get_short_names(shortinfo_filename),
+        dimensions_to_display=(2, 3, 5, 10, 20, 40),
+        goto_dimension=20,  # auto-focus on this dimension in html
+        rldDimsOfInterest=dimsOfInterest,
+        tabDimsOfInterest=dimsOfInterest,
         hardesttargetlatex='10^{-5}',  # used for ppfigs, pptable and pptables
         ppfigs_ftarget=1e-5,  # to set target runlength in expensive setting, use genericsettings.target_runlength
         ppfig2_ftarget=1e-5,
@@ -374,6 +508,7 @@ class GECCOBiObjBBOBTestbed(Testbed):
         pprldistr_target_values=(1e-1, 1e-2, 1e-3, 1e-5),
         pprldmany_target_values=
         np.append(np.append(10 ** np.arange(0, -5.1, -0.1), [0]), -10 ** np.arange(-5, -3.9, 0.2)),
+        instances_are_uniform = False,
         pprldmany_target_range_latex='$\{-10^{-4}, -10^{-4.2}, $ $-10^{-4.4}, -10^{-4.6}, -10^{-4.8}, -10^{-5}, 0, 10^{-5}, 10^{-4.9}, 10^{-4.8}, \dots, 10^{-0.1}, 10^0\}$',
         ppscatter_target_values=np.logspace(-5, 1, 21),  # 21 was 51
         rldValsOfInterest=(1e-1, 1e-2, 1e-3, 1e-4, 1e-5),
@@ -398,6 +533,9 @@ class GECCOBiObjBBOBTestbed(Testbed):
         # independently of the testbed constrained to the data we actually
         # see, that is, not assigned here?
         number_of_points=10,  # nb of target function values for each decade
+        plots_on_main_html_page=['pprldmany_02D_noiselessall.svg', 'pprldmany_03D_noiselessall.svg',
+                                 'pprldmany_05D_noiselessall.svg', 'pprldmany_10D_noiselessall.svg',
+                                 'pprldmany_20D_noiselessall.svg', 'pprldmany_40D_noiselessall.svg'],
     ) 
 
     def __init__(self, targetValues):
@@ -416,16 +554,48 @@ class GECCOBiObjBBOBTestbed(Testbed):
             # self.short_names = get_short_names(self.shortinfo_filename)
             self.instancesOfInterest = {1: 1, 2: 1, 3: 1, 4: 1, 5: 1}
 
+    def filter(self, dsl):
+        """ Filters DataSetList or list of DataSets dsl to
+            contain only the first 55 functions if data from
+            both the bbob-biobj and the bbob-biobj-ext suite are detected.
+
+            Returns the filtered list as a flat list.
+        
+            Gives an error if the data is not compatible.    
+        """
+
+        # find out whether we have to do something:
+        bbobbiobj_detected = False
+        bbobbiobjext_detected = False
+        for ds in dsl:
+            if ds.get_suite() == 'bbob-biobj':
+                bbobbiobj_detected = True
+            elif ds.get_suite() == 'bbob-biobj-ext':
+                bbobbiobjext_detected = True
+            else:
+                raise ValueError("Data from %s suite is not "
+                                 "compatible with other data from "
+                                 "the bbob-biobj and/or bbob-biobj-ext "
+                                 "suites" % str(ds.get_suite()))
+
+        # now filter all elements in flattened list if needed:
+        if bbobbiobj_detected and bbobbiobjext_detected:
+            dsl = list(filter(lambda ds: ds.funcId <= 55, dsl))
+            for ds in dsl:
+                ds.get_suite = lambda: 'bbob-biobj'
+                ds.testbed_name = 'bbob-biobj'   # hack, see issue #1933
+        return dsl
+
 
 class GECCOBiObjExtBBOBTestbed(GECCOBiObjBBOBTestbed):
     """Biobjective testbed to display data sets run on the `bbob-biobj-ext`
        test suite.
     """
 
-    shortinfo_filename = 'bbob-biobj-benchmarkshortinfos.txt'
+    shortinfo_filename = 'bbob-biobj-ext-benchmarkshortinfos.txt'
     
     settings = dict(
-        info_filename='bbob-biobj-benchmarkinfos.txt',
+        info_filename='bbob-biobj-ext-benchmarkinfos.txt',
         shortinfo_filename=shortinfo_filename,
         name=testbed_name_bi_ext,
         short_names=get_short_names(shortinfo_filename),
@@ -436,7 +606,7 @@ class GECCOBiObjExtBBOBTestbed(GECCOBiObjBBOBTestbed):
         reference_algorithm_filename='', # TODO produce correct best2017 algo and delete this line
         reference_algorithm_displayname='', # TODO: should be read in from data set in reference_algorithm_filename
         instancesOfInterest={1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1}, # None:consider all instances
-    ) 
+    )
 
     def __init__(self, targetValues):        
         super(GECCOBiObjExtBBOBTestbed, self).__init__(targetValues)
@@ -454,4 +624,135 @@ class GECCOBiObjExtBBOBTestbed(GECCOBiObjBBOBTestbed):
                 self.instantiate_attributes(targetValues, [key])
 
 
+class BBOBLargeScaleTestbed(GECCOBBOBTestbed):
+    """ Settings related to `bbob-largescale` test suite.
+    """
+    
+    shortinfo_filename = 'bbob-largescale-benchmarkshortinfos.txt'
+    pptable_target_runlengths = [0.5, 1.2, 3, 10, 50]  # used in config for expensive setting
+    pptable_targetsOfInterest = (10, 1, 1e-1, 1e-2, 1e-3, 1e-5, 1e-7)  # for pptable and pptablemany
+    dimsOfInterest = (80, 320)
 
+    settings = dict(
+        info_filename='bbob-largescale-benchmarkinfos.txt',
+        shortinfo_filename=shortinfo_filename,
+        name=testbed_name_ls,
+        short_names=get_short_names(shortinfo_filename),
+        dimensions_to_display=(20, 40, 80, 160, 320, 640),
+        goto_dimension=160,  # auto-focus on this dimension in html
+        tabDimsOfInterest=dimsOfInterest,
+        rldDimsOfInterest=dimsOfInterest,
+        hardesttargetlatex='10^{-8}',  # used for ppfigs, pptable and pptables
+        ppfigs_ftarget=1e-8,  # to set target runlength in expensive setting, use genericsettings.target_runlength
+        ppfig2_ftarget=1e-8,
+        ppfigdim_target_values=(10, 1, 1e-1, 1e-2, 1e-3, 1e-5, 1e-8),
+        pprldistr_target_values=(10., 1e-1, 1e-4, 1e-8),
+        pprldmany_target_values=10 ** np.arange(2, -8.2, -0.2),
+        pprldmany_target_range_latex='$10^{[-8..2]}$',
+        ppscatter_target_values=np.logspace(-8, 2, 21),
+        rldValsOfInterest=(10, 1e-1, 1e-4, 1e-8),  # possibly changed in config
+        ppfvdistr_min_target=1e-8,
+        functions_with_legend=(1, 24),
+        first_function_number=1,
+        last_function_number=24,
+        reference_values_hash_dimensions=[],
+        pptable_ftarget=1e-8,  # value for determining the success ratio in all tables
+        pptable_targetsOfInterest=pptable_targetsOfInterest,
+        pptablemany_targetsOfInterest=pptable_targetsOfInterest,
+        scenario=scenario_largescalefixed,
+        reference_algorithm_filename='',  # TODO produce correct reference algo and update this line
+        reference_algorithm_displayname='',  # TODO: should be read in from data set in reference_algorithm_filename
+        pptable_target_runlengths=pptable_target_runlengths,
+        pptables_target_runlengths=pptable_target_runlengths,
+        data_format=dataformatsettings.BBOBOldDataFormat(),  #  we cannot assume the 2nd column have constraints evaluation
+        # TODO: why do we want the data format hard coded in the testbed?
+        # Isn't the point that the data_format should be set
+        # independently of the testbed constrained to the data we actually
+        # see, that is, not assigned here?
+        number_of_points=5,  # nb of target function values for each decade
+        instancesOfInterest=None,  # None: consider all instances
+        plots_on_main_html_page=['pprldmany_20D_noiselessall.svg', 'pprldmany_40D_noiselessall.svg',
+                                 'pprldmany_80D_noiselessall.svg', 'pprldmany_160D_noiselessall.svg',
+                                 'pprldmany_320D_noiselessall.svg', 'pprldmany_640D_noiselessall.svg']
+    )
+
+    def __init__(self, targetValues):
+        super(BBOBLargeScaleTestbed, self).__init__(targetValues)
+
+        if 11 < 3:
+            # override settings if needed...
+            self.settings.reference_algorithm_filename = 'refalgs/best2018-bbob-largescale.tar.gz'
+            self.settings.reference_algorithm_displayname = 'best 2018'  # TODO: should be read in from data set in reference_algorithm_filename
+            self.settings.short_names = get_short_names(self.shortinfo_filename)
+            self.settings.instancesOfInterest = {1: 1, 2: 1, 3: 1, 4: 1, 5: 1}
+
+        for key, val in BBOBLargeScaleTestbed.settings.items():
+            setattr(self, key, val)
+            if 'target_values' in key or 'targetsOfInterest' in key:
+                self.instantiate_attributes(targetValues, [key])
+
+
+class GECCOBBOBMixintTestbed(GECCOBBOBTestbed):
+    """Testbed used with the bbob-mixint test suite.
+    """
+
+    dimsOfInterest = (10, 40)
+
+    settings = dict(
+        name=testbed_name_mixint,
+        first_dimension=5,
+        dimensions_to_display=[5, 10, 20, 40, 80, 160],
+        goto_dimension=40,  # auto-focus on this dimension in html
+        tabDimsOfInterest=dimsOfInterest,
+        rldDimsOfInterest=dimsOfInterest,
+        reference_algorithm_filename=None,  # TODO produce correct reference algo and update this line
+        reference_algorithm_displayname=None,  # TODO: should be read in from data set in reference_algorithm_filename
+        instancesOfInterest={1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1,
+                             12: 1, 13: 1, 14: 1, 15: 1},
+        scenario=scenario_mixintfixed,
+        plots_on_main_html_page=['pprldmany_05D_noiselessall.svg', 'pprldmany_10D_noiselessall.svg',
+                                 'pprldmany_20D_noiselessall.svg', 'pprldmany_40D_noiselessall.svg',
+                                 'pprldmany_80D_noiselessall.svg', 'pprldmany_160D_noiselessall.svg'],
+    )
+
+    def __init__(self, targetValues):
+        super(GECCOBBOBMixintTestbed, self).__init__(targetValues)
+
+        for key, val in GECCOBBOBMixintTestbed.settings.items():
+            setattr(self, key, val)
+            if 'target_values' in key or 'targetsOfInterest' in key:
+                self.instantiate_attributes(targetValues, [key])
+
+    def filter(self, dsl):
+        ''' Does nothing on dsl (overriding the filter method of the superclass). '''
+        return dsl
+
+
+class GECCOBBOBBiObjMixintTestbed(GECCOBiObjExtBBOBTestbed):
+    """Testbed used with the bbob-biobj-mixint test suite.
+    """
+
+    dimsOfInterest = (10, 40)
+
+    settings = dict(
+        name=testbed_name_bi_mixint,
+        first_dimension=5,
+        dimensions_to_display=[5, 10, 20, 40, 80, 160],
+        goto_dimension=40,  # auto-focus on this dimension in html
+        instances_are_uniform=False,
+        tabDimsOfInterest=dimsOfInterest,
+        rldDimsOfInterest=dimsOfInterest,
+        reference_algorithm_filename=None,  # TODO produce correct reference algo and update this line
+        reference_algorithm_displayname=None,  # TODO: should be read in from data set in reference_algorithm_filename
+        instancesOfInterest={1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1,
+                             12: 1, 13: 1, 14: 1, 15: 1},
+        scenario=scenario_biobjmixintfixed,
+    )
+
+    def __init__(self, targetValues):
+        super(GECCOBBOBBiObjMixintTestbed, self).__init__(targetValues)
+
+        for key, val in GECCOBBOBBiObjMixintTestbed.settings.items():
+            setattr(self, key, val)
+            if 'target_values' in key or 'targetsOfInterest' in key:
+                self.instantiate_attributes(targetValues, [key])

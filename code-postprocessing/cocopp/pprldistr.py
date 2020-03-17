@@ -139,6 +139,7 @@ def load_previous_RLBdata(filename=previous_RLBdata_filename):
 
 
 def caption_single():
+
     caption_part_one = r"""%
          Empirical cumulative distribution functions (ECDF), plotting the fraction of
          trials with an outcome not larger than the respective value on the $x$-axis.
@@ -174,7 +175,10 @@ def caption_single():
         else:
             figure_caption = caption_part_one + caption_left_fixed_targets + caption_right
     elif testbedsettings.current_testbed.name in [testbedsettings.testbed_name_bi_ext,
-                                                  testbedsettings.testbed_name_cons]:
+                                                  testbedsettings.testbed_name_cons,
+                                                  testbedsettings.testbed_name_ls,
+                                                  testbedsettings.testbed_name_mixint,
+                                                  testbedsettings.testbed_name_bi_mixint]:
         # no best algorithm defined yet:
         figure_caption = caption_part_one + caption_left_fixed_targets + caption_right
     else:
@@ -183,9 +187,10 @@ def caption_single():
     return captions.replace(figure_caption)
 
 def caption_two():
+
     caption_two_part_one = r"""%
         Empirical cumulative distributions (ECDF)
-        of run lengths and speed-up ratios in 5-D (left) and 20-D (right).
+        of run lengths and speed-up ratios """ + ("""in %d-D (left) and %d-D (right).""" % tuple(testbedsettings.current_testbed.tabDimsOfInterest)) + r"""
         Left sub-columns: ECDF of
         the number of function evaluations divided by dimension $D$
         (FEvals/D) """
@@ -205,7 +210,7 @@ def caption_two():
         BBOB-2009. """ if testbedsettings.current_testbed.name in [testbedsettings.testbed_name_single,
                                                                    testbedsettings.testbed_name_single_noisy]
         else "") + r"""Right sub-columns:
-        ECDF of FEval ratios of \algorithmA\ divided by \algorithmB for target
+        ECDF of FEval ratios of \algorithmA\ divided by \algorithmB\ for target
         function values $10^k$ with $k$ given in the legend; all
         trial pairs for each function. Pairs where both trials failed are disregarded,
         pairs where one trial failed are visible in the limits being $>0$ or $<1$. The
@@ -242,7 +247,10 @@ def caption_two():
                            + caption_two_rlbased_targets_part3)
 
     if testbedsettings.current_testbed.name in [testbedsettings.testbed_name_bi_ext,
-                                                testbedsettings.testbed_name_cons]:
+                                                testbedsettings.testbed_name_cons,
+                                                testbedsettings.testbed_name_ls,
+                                                testbedsettings.testbed_name_mixint,
+                                                testbedsettings.testbed_name_bi_mixint]:
         # NOTE: no runlength-based targets supported yet
         figure_caption = caption_two_fixed
     elif testbedsettings.current_testbed.name in [testbedsettings.testbed_name_single,
@@ -318,8 +326,9 @@ def beautifyRLD(xlimit_max=None):
     a.set_ylabel('proportion of trials')
     logxticks()
     if xlimit_max:
-        plt.xlim(xmax=xlimit_max ** 1.0) # was 1.05
-    plt.xlim(xmin=runlen_xlimits_min)
+        plt.xlim(runlen_xlimits_min, xlimit_max**1.0) # was 1.05
+    else:
+        plt.xlim(runlen_xlimits_min, None)
     plt.text(plt.xlim()[0],
              plt.ylim()[0],
              testbedsettings.current_testbed.pprldistr_target_values.short_info,
@@ -634,7 +643,7 @@ def comp(dsList0, dsList1, targets, isStoringXMax=False,
         plt.text(0.5, 0.98, text, horizontalalignment="center",
                  verticalalignment="top", transform=plt.gca().transAxes) # bbox=dict(ec='k', fill=False),
         beautifyRLD(evalfmax)
-        save_figure(filename, dsList0[0].algId)
+        save_figure(filename, dsList0[0].algId, subplots_adjust=dict(left=0.135, bottom=0.15, right=1, top=0.99))
         plt.close(fig)
 
 def beautify():
@@ -869,7 +878,7 @@ def main(dsList, isStoringXMax=False, outputdir='',
 
 
         beautifyRLD(evalfmax)
-        save_figure(filename, dsList[0].algId)
+        save_figure(filename, dsList[0].algId, subplots_adjust=dict(left=0.135, bottom=0.15, right=1, top=0.99))
         plt.close(fig)
 
         # second figure: Function Value Distribution
@@ -886,7 +895,8 @@ def main(dsList, isStoringXMax=False, outputdir='',
         plt.text(0.98, 0.02, text, horizontalalignment="right",
                  transform=plt.gca().transAxes) # bbox=dict(ec='k', fill=False),
         beautifyFVD(isStoringXMax=isStoringXMax, ylabel=False)
-        save_figure(filename, dsList[0].algId)
+        save_figure(filename, dsList[0].algId, subplots_adjust=dict(left=0.0, bottom=0.15, right=1, top=0.99))
+
         plt.close(fig)
         # plt.rcdefaults()
 

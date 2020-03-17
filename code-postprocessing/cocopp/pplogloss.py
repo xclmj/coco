@@ -20,12 +20,12 @@ try:
 except ImportError:
     # compatibility matplotlib 0.8
     from matplotlib.transforms import blend_xy_sep_transform as blend
-from matplotlib import mlab as mlab
 from six import advance_iterator
 
 from . import toolsstats, toolsdivers, bestalg, testbedsettings, genericsettings, captions
 from .pptex import writeFEvals2
 from .ppfig import save_figure, consecutiveNumbers
+from . import testbedsettings
 
 """
 aRT loss ratio of an algorithm A for comparison to a reference/best algorithm.
@@ -336,7 +336,7 @@ def boxplot(x, notch=0, sym='b+', positions=None, widths=None):
     for i, pos in enumerate(positions):
         d = np.ravel(x[i])
         # get median and quartiles
-        wisk_lo, q1, med, q3, wisk_hi = mlab.prctile(d, [10, 25, 50, 75, 90])
+        wisk_lo, q1, med, q3, wisk_hi = np.percentile(d, [10, 25, 50, 75, 90])
         # get high extreme
         #iq = q3 - q1
         #hi_val = q3 + whis*iq
@@ -510,7 +510,7 @@ def beautify():
     a.set_yscale('log')
     ymin = 1e-2
     ymax = 1e4
-    plt.ylim(ymin=ymin, ymax=ymax)
+    plt.ylim(ymin, ymax)
     ydata = np.power(10., np.arange(np.log10(ymin), np.log10(ymax)+1))
     yticklabels = list(str(i) for i in range(int(np.log10(ymin)),
                                              int(np.log10(ymax)+1)))
@@ -855,9 +855,10 @@ def generateFigure(dsList, CrE=0., isStoringXRange=True, outputdir='.',
                  transform=plt.gca().transAxes)
         beautify()
         if evalf:
-            plt.xlim(xmin=evalf[0]-0.5, xmax=evalf[1]+0.5)
+            plt.xlim(evalf[0]-0.5, evalf[1]+0.5)
 
-        save_figure(filename, dsdim[0].algId)
+        save_figure(filename, dsdim[0].algId,
+                    subplots_adjust={'bottom': 0.135})
 
         #plt.show()
         plt.close()

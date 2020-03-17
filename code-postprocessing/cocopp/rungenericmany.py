@@ -288,6 +288,14 @@ def main(argv=None):
 
         print("  loading data...")
         dsList, sortedAlgs, dictAlg = processInputArgs(args, True)
+        # TODO: dictAlg not really needed here anymore as we filter
+        #       dsList and then get dictAlg from there...
+
+        # filter data set lists to be compliant with all suites
+        # (useful right now only for bbob-biobj and bbob-biobj-ext data)
+        dsList = DataSetList(testbedsettings.current_testbed.filter(dsList))
+        dictAlg = dsList.dictByAlgName()
+        config.config() # make sure that the filtered settings are taken into account
 
         if not dsList:
             sys.exit()
@@ -314,10 +322,10 @@ def main(argv=None):
         from . import config
         config.config_target_values_setting(genericsettings.isExpensive,
                                             genericsettings.runlength_based_targets)
-        config.config(dsList[0].testbed_name)
+        config.config(dsList[0].get_testbed_name())
 
         for i in dsList:
-            if i.dim not in genericsettings.dimensions_to_display:
+            if i.dim not in testbedsettings.current_testbed.dimensions_to_display:
                 continue
             # check whether current set of instances correspond to correct
             # setting of a BBOB workshop and issue a warning otherwise:            
@@ -372,7 +380,7 @@ def main(argv=None):
 
         # empirical cumulative distribution functions (ECDFs) aka Data profiles
         if prepare_RLDistr:
-            config.config(dsList[0].testbed_name)
+            config.config(dsList[0].get_testbed_name())
 
             if len(genericsettings.foreground_algorithm_list) == 2:
                 print("ECDF runlength ratio graphs...")
@@ -404,7 +412,7 @@ def main(argv=None):
                 dic_dim0 = ds_list0.dictByDim()
                 dic_dim1 = ds_list1.dictByDim()
                 for dim in set(dic_dim0.keys()) & set(dic_dim1.keys()):
-                    if dim in inset.rldDimsOfInterest:
+                    if dim in testbedsettings.current_testbed.rldDimsOfInterest:
                         # ECDF for all functions altogether
                         try:
                             pprldistr2.main(dic_dim0[dim], dic_dim1[dim], dim,
@@ -451,7 +459,7 @@ def main(argv=None):
                         pprldistr.fmax = None  # Resetting the max final value
                         pprldistr.evalfmax = None  # Resetting the max #fevalsfactor
                         # ECDFs of all functions altogether
-                        if dim in inset.rldDimsOfInterest:
+                        if dim in testbedsettings.current_testbed.rldDimsOfInterest:
                             try:
                                 pprldistr.comp(dic_dim1[dim], dic_dim0[dim],
                                                testbedsettings.current_testbed.rldValsOfInterest,

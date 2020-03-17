@@ -81,7 +81,6 @@ refcolor = 'wheat'
 
 
 # should correspond with the colors in pprldistr.
-dimensions = genericsettings.dimensions_to_display
 
 def scaling_figure_caption():
     """Provides a figure caption with the help of captions.py for
@@ -167,12 +166,15 @@ def beautify(axesLabel=True):
         plt.plot((0.2, 20000), (10**i, 10**(i + 5)), 'k:', linewidth=0.5)
         # TODO: this should be done before the real lines are plotted?
 
+
     # for x in dimensions:
     #     plt.plot(2 * [x], [0.1, 1e11], 'k:', linewidth=0.5)
 
     # Ticks on axes
     # axisHandle.invert_xaxis()
-    dimticklist = dimensions 
+    
+    dimensions = testbedsettings.current_testbed.dimensions_to_display
+    dimticklist = dimensions
     dimannlist = dimensions 
     # TODO: All these should depend on one given input (xlim, ylim)
 
@@ -201,7 +203,7 @@ def beautify(axesLabel=True):
             plt.ylim(0.3, xlim_max)  # set in config 
         else:
             # pass  # TODO: xlim_max seems to be not None even when not desired
-            plt.ylim(ymax=min([plot.ylim()[1], xlim_max]))
+            plt.ylim(None, min([plot.ylim()[1], xlim_max]))
     plt.ylim(ppfig.discretize_limits((ymin, ymax)))
 
     if 11 < 3:
@@ -345,6 +347,7 @@ def plot(dsList, valuesOfInterest=None, styles=styles):
 
         mediandata = {}
         displaynumber = {}
+        no_target_reached = 1;
         for i_target in range(len(valuesOfInterest)):
             succ = []
             unsucc = []
@@ -368,6 +371,7 @@ def plot(dsList, valuesOfInterest=None, styles=styles):
                         displaynumber[dim] = ((dim, tmp[0], tmp[2]))
                     mediandata[dim] = (i_target, tmp[-1])
                     unsucc.append(np.append(dim, np.nan))
+                    no_target_reached = 0
                 else:
                     unsucc.append(np.append(dim, tmp[-2]))  # total number of fevals
 
@@ -440,6 +444,11 @@ def plot(dsList, valuesOfInterest=None, styles=styles):
             res.extend(plt.plot(tmp[:, 0], maxevals / tmp[:, 0]**ynormalize_by_dimension,
                        color=styles[len(valuesOfInterest) - 1]['color'],
                        ls='', marker='x', markersize=20))
+            if no_target_reached:
+                ylim_maxevals = max(maxevals / tmp[:, 0]**ynormalize_by_dimension)
+                ylim = (ylim[0], ylim_maxevals)
+                plt.annotate('no target reached', xy=(0.5, 0.5), xycoords='axes fraction', fontsize=14,
+                            horizontalalignment='center', verticalalignment='center')
             plt.ylim(ylim)
         # median
         if mediandata:
@@ -484,6 +493,7 @@ def plot_previous_algorithms(func, target=None):  # lambda x: [1e-8]):
         return None
 
     refalgdata = []
+    dimensions = testbedsettings.current_testbed.dimensions_to_display
     for d in dimensions:
         try:
             entry = refalgentries[(d, func)]
@@ -515,11 +525,12 @@ def main(dsList, _valuesOfInterest, outputdir):
     
     """
 
-    # plt.rc("axes", labelsize=20, titlesize=24)
-    # plt.rc("xtick", labelsize=20)
-    # plt.rc("ytick", labelsize=20)
-    # plt.rc("font", size=20)
-    # plt.rc("legend", fontsize=20)
+    plt.rc("axes", **genericsettings.rcaxes)
+    plt.rc("xtick", **genericsettings.rctick)
+    plt.rc("ytick", **genericsettings.rctick)
+    plt.rc("font", **genericsettings.rcfont)
+    plt.rc("legend", **genericsettings.rclegend)
+    plt.rc('pdf', fonttype=42)
 
     _valuesOfInterest = pproc.TargetValues.cast(_valuesOfInterest)
 
@@ -554,9 +565,10 @@ def main(dsList, _valuesOfInterest, outputdir):
             parentFileName=genericsettings.single_algorithm_file_name)
 
     ppfig.copy_js_files(outputdir)
-    
-    funInfos = ppfigparam.read_fun_infos()    
+
+    funInfos = ppfigparam.read_fun_infos()
     fontSize = ppfig.getFontSize(funInfos.values())
+
     for func in dictFunc:
         plot(dictFunc[func], _valuesOfInterest, styles=styles)  # styles might have changed via config
         beautify(axesLabel=False)
@@ -569,12 +581,14 @@ def main(dsList, _valuesOfInterest, outputdir):
                  verticalalignment="bottom")
 
         if func in testbedsettings.current_testbed.functions_with_legend:
-            toolsdivers.legend(loc="best")
+            toolsdivers.legend(loc="best", fontsize=16)
         if func in funInfos.keys():
-            # print(plt.rcParams['axes.titlesize'])
-            # print(plt.rcParams['font.size'])
             funcName = funInfos[func]
             plt.gca().set_title(funcName, fontsize=fontSize)
+
+        if genericsettings.scaling_plots_with_axis_labels:
+            plt.xlabel('dimension')
+            plt.ylabel('log10(# f-evals / dimension)')
 
         plot_previous_algorithms(func, _valuesOfInterest)
         filename = os.path.join(outputdir, 'ppfigdim_f%03d' % (func))

@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import sys
 import os
-from os.path import join
+from os.path import join, abspath, realpath
 import shutil
 import tempfile
 import subprocess
@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.abspath(join('code-experiments', 'tools')))
 from amalgamate import amalgamate
 from cocoutils import make, run, python, check_output
 from cocoutils import copy_file, expand_file, write_file
+from cocoutils import executable_path
 from cocoutils import git_version, git_revision
 
 CORE_FILES = ['code-experiments/src/coco_random.c',
@@ -164,6 +165,10 @@ def run_c_integration_tests():
             ['./test_biobj'], verbose=_verbosity)
         run('code-experiments/test/integration-test',
             ['./test_bbob-constrained'], verbose=_verbosity)
+        run('code-experiments/test/integration-test',
+            ['./test_bbob-largescale'], verbose=_verbosity)
+        run('code-experiments/test/integration-test',
+            ['./test_bbob-mixint'], verbose=_verbosity)
     except subprocess.CalledProcessError:
         sys.exit(-1)
 
@@ -201,6 +206,14 @@ def leak_check():
     build_c()
     build_c_integration_tests()
     os.environ['CFLAGS'] = '-g -Os'
+    valgrind_cmd = ['valgrind', '--error-exitcode=1', '--track-origins=yes',
+                    '--leak-check=full', '--show-reachable=yes',
+                    './test_bbob-largescale', 'leak_check']
+    run('code-experiments/test/integration-test', valgrind_cmd, verbose=_verbosity)
+    valgrind_cmd = ['valgrind', '--error-exitcode=1', '--track-origins=yes',
+                    '--leak-check=full', '--show-reachable=yes',
+                    './test_bbob-mixint', 'leak_check']
+    run('code-experiments/test/integration-test', valgrind_cmd, verbose=_verbosity)
     valgrind_cmd = ['valgrind', '--error-exitcode=1', '--track-origins=yes',
                     '--leak-check=full', '--show-reachable=yes',
                     './test_coco', 'bbob2009_testcases.txt']
@@ -606,8 +619,17 @@ def build_java():
                 {'COCO_VERSION': git_version(pep440=True)})
     write_file(git_revision(), "code-experiments/build/java/REVISION")
     write_file(git_version(), "code-experiments/build/java/VERSION")
-    run('code-experiments/build/java', ['javac', 'CocoJNI.java'], verbose=_verbosity)
-    run('code-experiments/build/java', ['javah', 'CocoJNI'], verbose=_verbosity)
+
+    javacpath = executable_path('javac')
+    javahpath = executable_path('javah')
+    if javacpath and javahpath:
+        run('code-experiments/build/java', ['javac', '-classpath', '.', 'CocoJNI.java'], verbose=_verbosity)
+        run('code-experiments/build/java', ['javah', '-classpath', '.', 'CocoJNI'], verbose=_verbosity)
+    elif javacpath:
+        run('code-experiments/build/java', ['javac', '-h', '.', 'CocoJNI.java'], verbose=_verbosity)
+    else:
+        raise RuntimeError('Can not find javac path!')
+
 
     # Finds the path to the headers jni.h and jni_md.h (platform-dependent)
     # and compiles the CocoJNI library (compiler-dependent). So far, only
@@ -623,9 +645,9 @@ def build_java():
         jdkpath2 = jdkpath1 + '\\win32'
 
         if '64' in platform.machine():
-            run('code-experiments/build/java', ['x86_64-w64-mingw32-gcc', '-I', jdkpath1, '-I',
-                                                jdkpath2, '-shared', '-o', 'CocoJNI.dll',
-                                                'CocoJNI.c'], verbose=_verbosity)
+            run('code-experiments/build/java', ['x86_64-w64-mingw32-gcc', '-I',
+                                                jdkpath1, '-I', jdkpath2, '-shared', '-o',
+                                                'CocoJNI.dll', 'CocoJNI.c'], verbose=_verbosity)
 
             # 2. Windows with Cygwin (both 32-bit)
         elif '32' in platform.machine() or 'x86' in platform.machine():
@@ -646,9 +668,18 @@ def build_java():
 
     # 4. Linux
     elif 'linux' in sys.platform:
-        jdkpath = check_output(['locate', 'jni.h'], stderr=STDOUT,
-                               env=os.environ, universal_newlines=True)
-        jdkpath1 = jdkpath.split("jni.h")[0]
+        # bad bad bad...
+        #jdkpath = check_output(['locate', 'jni.h'], stderr=STDOUT,
+        #                       env=os.environ, universal_newlines=True)
+        #jdkpath1 = jdkpath.split("jni.h")[0]
+        # better
+        javapath = executable_path('java')
+        if not javapath:
+            raise RuntimeError('Can not find Java executable')
+        jdkhome = abspath(join(javapath, os.pardir, os.pardir))
+        if os.path.basename(jdkhome) == 'jre':
+            jdkhome = join(jdkhome, os.pardir)
+        jdkpath1 = join(jdkhome, 'include')
         jdkpath2 = jdkpath1 + '/linux'
         run('code-experiments/build/java',
             ['gcc', '-I', jdkpath1, '-I', jdkpath2, '-c', 'CocoJNI.c'],
@@ -674,11 +705,11 @@ def build_java():
             ['gcc', '-dynamiclib', '-o', 'libCocoJNI.jnilib', 'CocoJNI.o'],
             verbose=_verbosity)
 
-    run('code-experiments/build/java', ['javac', 'Problem.java'], verbose=_verbosity)
-    run('code-experiments/build/java', ['javac', 'Benchmark.java'], verbose=_verbosity)
-    run('code-experiments/build/java', ['javac', 'Observer.java'], verbose=_verbosity)
-    run('code-experiments/build/java', ['javac', 'Suite.java'], verbose=_verbosity)
-    run('code-experiments/build/java', ['javac', 'ExampleExperiment.java'], verbose=_verbosity)
+    run('code-experiments/build/java', ['javac', '-classpath', '.', 'Problem.java'], verbose=_verbosity)
+    run('code-experiments/build/java', ['javac', '-classpath', '.', 'Benchmark.java'], verbose=_verbosity)
+    run('code-experiments/build/java', ['javac', '-classpath', '.', 'Observer.java'], verbose=_verbosity)
+    run('code-experiments/build/java', ['javac', '-classpath', '.', 'Suite.java'], verbose=_verbosity)
+    run('code-experiments/build/java', ['javac', '-classpath', '.', 'ExampleExperiment.java'], verbose=_verbosity)
 
 
 def run_java():
@@ -686,7 +717,7 @@ def run_java():
     build_java()
     try:
         run('code-experiments/build/java',
-            ['java', '-Djava.library.path=.', 'ExampleExperiment'],
+            ['java', '-classpath', '.', '-Djava.library.path=.', 'ExampleExperiment'],
             verbose=_verbosity)
     except subprocess.CalledProcessError:
         sys.exit(-1)
@@ -721,7 +752,10 @@ ee.SOLVER = ee.random_search  # which is default anyway
 for ee.suite_name, ee.observer_options['result_folder'] in [
         ["bbob-biobj", "RS-bi"],  # use a short path for Jenkins
         ["bbob", "RS-bb"],
-        ["bbob-constrained", "RS-co"]
+        ["bbob-constrained", "RS-co"],
+        ["bbob-largescale", "RS-la"],
+        ["bbob-mixint", "RS-mi"],
+        ["bbob-biobj-mixint", "RS-bi-mi"]
     ]:
     print("  suite %s" % ee.suite_name, end=' ')  # these prints are swallowed
     if ee.suite_name in ee.cocoex.known_suite_names:
@@ -743,10 +777,9 @@ for ee.suite_name, ee.observer_options['result_folder'] in [
         sys.exit(-1)
     finally:
         # always remove folder of previously run experiments:
-        for s in ['bi', 'bb', 'co']:
+        for s in ['bi', 'bb', 'co', 'la', 'mi', 'bi-mi']:
             shutil.rmtree('code-experiments/build/python/exdata/RS-' + s,
                           ignore_errors=True)
-
 
 def verify_postprocessing(package_install_option = []):
     install_postprocessing(package_install_option = package_install_option)
@@ -945,7 +978,7 @@ def main(args):
     for arg in args[1:]:
         if arg == 'and-test':
             also_test_python = True
-        elif arg == 'install-user':
+        elif arg in ('install-user', '--user'):
             package_install_option = ['--user']
         elif arg[:13] == 'install-home=':
             package_install_option = ['--home=' + arg[13:]]

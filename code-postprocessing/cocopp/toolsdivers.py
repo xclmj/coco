@@ -6,7 +6,10 @@
 """
 from __future__ import absolute_import, print_function
 
-import os, time
+import os, time, warnings
+import tempfile, shutil
+from collections import OrderedDict as _OrderedDict
+import re as _re
 import numpy as np
 from matplotlib import pyplot as plt
 from subprocess import CalledProcessError, STDOUT
@@ -66,12 +69,189 @@ class StringList(list):
             inlist = list_or_str.split()
         except AttributeError:
             inlist = list_or_str
-        list.__init__(self, inlist)
+        if inlist:  # prevent error on None
+            list.__init__(self, inlist)
 
     @property
     def as_string(self):
         """return concatenation with spaces between"""
         return ' ' + ' '.join(self) + ' '
+
+
+class InfolderGoneWithTheWind:
+    """``with InfolderGoneWithTheWind(): ...`` executes the block in a
+
+    temporary folder under the current folder. The temporary folder is
+    deleted on exiting the block.
+
+    >>> import os
+    >>> dir_ = os.getcwd()  # for the record
+    >>> len_ = len(os.listdir('.'))
+    >>> with InfolderGoneWithTheWind():  # doctest: +SKIP
+    ...     # do some work in a folder here, e.g. write files
+    ...     len(dir_) > len(os.getcwd()) and os.getcwd() in dir_
+    True
+    >>> # magically we are back in the original folder
+    >>> assert dir_ == os.getcwd()
+    >>> assert len(os.listdir('.')) == len_
+
+    """
+    def __init__(self, prefix='_'):
+        """no folder needs to be given"""
+        self.prefix = prefix
+    def __enter__(self):
+        self.root_dir = os.getcwd()
+        # self.target_dir = tempfile.mkdtemp(prefix=self.prefix, dir='.')
+        self.target_dir = tempfile.mkdtemp(prefix=self.prefix)
+        self._target_dir = self.target_dir
+        os.chdir(self.target_dir)
+    def __exit__(self, *args):
+        os.chdir(self.root_dir)
+        if self.target_dir == self._target_dir:
+            shutil.rmtree(self.target_dir)
+        else:
+            raise ValueError("inconsistent temporary folder name %s vs %s"
+                             % (self._target_dir, self.target_dir))
+
+
+class StrList(list):
+    """A list of `str` with search/find functionality.
+
+    """
+    def __init__(self, list_or_str):
+        try:
+            inlist = list_or_str.split()
+        except AttributeError:
+            inlist = list_or_str
+        if inlist:  # prevent failing on None
+            list.__init__(self, inlist)
+        self._names_found = []
+
+    @property
+    def as_string(self):
+        """return space separated string concatenation surrounded by spaces.
+        
+        To get only the recently found items use ``found.as_string``
+        instead of ``as_string``.
+        """
+        return ' ' + ' '.join(self) + ' '
+
+    @property
+    def found(self):
+        """`StrList` of elements found during the last call to `find`.
+        """
+        return StrList(self._names_found)
+
+    def __call__(self, *substrs):
+        """alias to `find`"""
+        return self.find(*substrs)
+
+    def find(self, *substrs):
+        """return entries that match all `substrs`.
+
+        This method serves for interactive exploration of available entries
+        and may be aliased to the shortcut of calling the instance itself.
+
+        When given several `substrs` arguments the results match each
+        substring (AND search, an OR can be simply achieved by appending
+        the result of two finds). Upper/lower case is ignored.
+
+        When given a single `substrs` argument, it may be
+
+        - a list of matching substrings, used as several substrings as above
+        - an index of `type` `int`
+        - a list of indices
+
+        A single substring matches either if an entry contains the
+        substring or if the substring matches as regular expression, where
+        "." matches any single character and ".*" matches any number >= 0
+        of characters.
+
+        >>> from cocopp.toolsdivers import StrList
+        >>> s = StrList(['abc', 'bcd', 'cde', ' cde'])
+        >>> s('bc')  # all strings with a 'bc'
+        ['abc', 'bcd']
+        >>> s('a', 'b')  # all strings with an 'a' AND 'b'
+        ['abc']
+        >>> s(['a', 'b'])  # the same
+        ['abc']
+        >>> s('.c')  # regex 'c' as second char
+        ['bcd', ' cde']
+        >>> s('.*c')  # regex 'c' preceded with any sequence
+        ['abc', 'bcd', 'cde', ' cde']
+
+        Details: The list of matching names is stored in `found`.
+        """
+        # check whether the first arg is a list rather than a str
+        if substrs and len(substrs) == 1 and substrs[0] != str(substrs[0]):
+            substrs = substrs[0]  # we may now have a list of str as expected
+            if isinstance(substrs, int):  # or maybe just an int
+                self._names_found = [self[substrs]]
+                return StrList(self._names_found)
+            elif substrs and isinstance(substrs[0], int):  # or a list of indices
+                self._names_found = [self[i] for i in substrs]
+                return StrList(self._names_found)
+        names = list(self)
+        for s in substrs:
+            rex = _re.compile(s, _re.IGNORECASE)
+            try:
+                names = [name for name in names if rex.match(name) or s.lower() in name.lower()]
+            except AttributeError:
+                warnings.warn("arguments to `find` must be strings or a "
+                              "single integer or an integer list")
+                raise
+        self._names_found = names
+        return StrList(names)
+
+    def find_indices(self, *substrs):
+        """same as `find` but returns indices instead of names"""
+        return [self.index(name) for name in self.find(*substrs)]
+
+    def print(self, *substrs):
+        """print the result of ``find(*substrs)`` with indices.
+
+        Details: does not change `found` and returns `None`.
+        """
+        current_names = list(self._names_found)
+        for index in self.find_indices(*substrs):
+            print("%4d: '%s'" % (index, self[index]))
+        self._names_found = current_names
+
+
+class AlgorithmList(list):
+    """Not in use. Not necessary when the algorithm dict is an `OrderedDict` anyway.
+
+    A `list` representing the algorithm name arguments in original order.
+
+    The method `ordered_dict` allows to transform an algorithm `dict` into an
+    `OrderedDict` using the order in self.
+
+    >>> from cocopp.toolsdivers import AlgorithmList
+    >>> l = ['b', 'a', 'c']
+    >>> al = AlgorithmList(l)
+    >>> d = dict(zip(l[-1::-1], [1, 2, 3]))
+    >>> for i, name in enumerate(al.ordered_dict(d)):
+    ...     assert name == l[i]
+
+    """
+    def ordered_dict(self, algorithms_dict):
+        """return algorithms_dict as `OrderedDict` in order of self.
+
+        Keys that are not in self are sorted using `sorted`.
+        """
+        if set(algorithms_dict) != set(self):
+            warnings.warn("keys in algorithm dict: \n%s\n"
+                          "do not agree with original algorithm list: \n%s\n"
+                                 % (str(algorithms_dict.keys()), str(self)))
+        res = _OrderedDict()
+        for name in self:
+            if name in algorithms_dict:
+                res[name] = algorithms_dict[name]
+        for name in sorted(algorithms_dict):
+            if name not in res:
+                res[name] = algorithms_dict[name]
+        assert res == algorithms_dict  # compares keys and values
+        return res
 
 
 def print_done(message='  done'):
@@ -290,6 +470,7 @@ def legend(*args, **kwargs):
    try:
       plt.legend(*args, **kwargs)
    except:
+      warnings.warn("framealpha not effective")
       kwargs.pop('framealpha')
       plt.legend(*args, **kwargs)
       

@@ -9,6 +9,10 @@ import os, sys
 import time
 import numpy as np
 import cocoex
+try:
+    from urllib.request import urlretrieve
+except ImportError:
+    from urllib import urlretrieve
 
 
 def _is_equal(x, y):
@@ -55,6 +59,7 @@ def regression_test_a_suite(suite_name, filename):
         sys.stdout.flush()
         t0 = time.clock()
     suite = cocoex.Suite(suite_name, "year: 0000", "") # choose "default" year for test
+    failed_test_counter = 0
     for key in xfc_dict:
         f, x = suite[key[0]], key[1]
         try:
@@ -62,16 +67,19 @@ def regression_test_a_suite(suite_name, filename):
         except AssertionError:
             print(f.name, "id,x =", key, "stored f(x),con(x) =",
                   xfc_dict[key], "computed f(x) =", f(x))
-            raise
+            failed_test_counter += 1
         if f.number_of_constraints > 0:
             try:
                 assert is_equal(f.constraint(x), xfc_dict[key][1])
             except AssertionError:
                 print(f.name, "index,x =", key, "stored f,con =",
                       xfc_dict[key], "computed con =", f.constraint(x))
-                raise
+                failed_test_counter += 1
+    if failed_test_counter > 0:
+        raise AssertionError("{} assertions failed".format(failed_test_counter))
     if verbose:
         print("done in %.1fs" % (time.clock() - t0))
+
 
 if __name__ == "__main__":
     try:
@@ -86,9 +94,21 @@ if __name__ == "__main__":
         pass
     else:
         for name in cocoex.known_suite_names:
-            regression_test_a_suite(name,
-                os.path.join("data",
-                             "regression_test_%ddata_for_suite_" % ndata + name + ".py"))
+            data_file_path = ("data/regression_test_%ddata_for_suite_" % ndata) + name + ".py"
+
+            if not os.path.exists(data_file_path):
+                remote_data_path = 'http://coco.gforge.inria.fr/regression-tests/'
+                # download data from remote_data_path:
+                if not os.path.exists(os.path.split(data_file_path)[0]):
+                    try:
+                        os.makedirs(os.path.split(data_file_path)[0])
+                    except os.error:  # python 2&3 compatible
+                        raise
+                url = '/'.join((remote_data_path, data_file_path))
+                print("  downloading %s to %s" % (url, data_file_path))
+                urlretrieve(url, data_file_path)
+
+            regression_test_a_suite(name, data_file_path)
     
     if 11 < 3: # test whether last dimensions of `bbob` and first of `bbob-largescale` match
         regression_test_a_suite("bbob-largescale",

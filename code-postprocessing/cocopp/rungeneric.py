@@ -76,10 +76,12 @@ def main(argv=None):
       to a location which is in the path)
 
     ``data_folder`` may be a name from the known data archive, see e.g.
-    `cocopp.bbob`, or a uniquely matching substring of such a name,
-    or a matching substring with added "!" in which case the first
-    match is taken, or a matching substring with added "*" in which
-    case all matches are taken.
+    `cocopp.bbob`, or a uniquely matching substring of such a name, or a
+    matching substring with added "!" in which case the first match is taken, or
+    a matching substring with added "*" in which case all matches are taken, or
+    a regular expression containing a '*' before the last character, in which
+    case, for example, "bbob/.*7.*cma"  matches "bbob/2017/DTS-CMA-ES-Pitra.tgz"
+    (among others).
 
     This routine will:
 
@@ -287,7 +289,7 @@ def main(argv=None):
         print('Post-processing (%s)' % ('1' if len(args) == 1 else '2+'))  # to not break doctests
 
         # manage data paths as given in args
-        data_archive = archiving.COCODataArchive()
+        data_archive = archiving.official_archives.all  # was: archiving.COCODataArchive()
         args = data_archive.get_extended(args)
         if None in args:
             raise ValueError("Data argument %d was not matching any file"
@@ -310,13 +312,15 @@ def main(argv=None):
         for path in args:
             if data_archive.contains(path):  # this is the archive of *all* testbeds
                 # extract suite name
-                suites.add(data_archive.name(path).split('/')[0])
-        if len(suites) > 1:
-            raise ValueError("Data from more than one suites %s cannot "
+                suites.add(data_archive._name_with_check(path).split('/')[0])
+        if len(suites) > 2:
+            raise ValueError("Data from more than two suites %s cannot "
                              "be post-processed together" % str(suites))
 
         if len(args) == 1 or '--include-single' in dict(opts):
+            genericsettings.foreground_algorithm_list = []
             for i, alg in enumerate(args):
+                genericsettings.foreground_algorithm_list.append(alg)
                 dsld = rungeneric1.main(genopts + ["-o", outputdir, alg])
 
         if len(args) >= 2 or len(genericsettings.background) > 0:
@@ -326,10 +330,10 @@ def main(argv=None):
             # and rungenericmany.main() or lower-level functions are called.
             genericsettings.foreground_algorithm_list = []
             dsld = rungenericmany.main(genopts + ["-o", outputdir] + args)
-            toolsdivers.prepend_to_file(latex_commands_filename,
-                                        ['\\providecommand{\\numofalgs}{2+}']
+            
+        toolsdivers.prepend_to_file(latex_commands_filename,
+                                        ['\\providecommand{\\numofalgs}{%d}' % len(args)]
                                         )
-
         toolsdivers.prepend_to_file(latex_commands_filename,
                                     ['\\providecommand{\\cocoversion}{\\hspace{\\textwidth}\\scriptsize\\sffamily{}' +
                                      '\\color{Gray}Data produced with COCO %s}' % (toolsdivers.get_version_label(None))]
