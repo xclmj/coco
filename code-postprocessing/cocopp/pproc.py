@@ -1735,6 +1735,78 @@ class DataSet(object):
         warnings.warn("evals_appended is not yet implemented, returning/using evals")
         return self._evals
 
+    @property
+    def _instance_repetitions(self):  # -> float
+        """return 0 if all instance number ids are unique, >= 1 otherwise"""
+        # TODO: manage when instancenumbers is not iterable?
+        return len(self.instancenumbers) - len(set(self.instancenumbers))
+
+    @staticmethod
+    def _largest_finite_index(ar):
+        """return `i` such that ``isfinite(ar[i]) and not isfinite(ar[i+1])``,
+
+        or ``i == -1`` if ``not isfinite(ar[0])``.
+
+        Somewhat tested, but not in use.
+
+        The computation takes O(log(``len(ar)``) time and starts to become
+        faster than ``where(isfinited(ar))[0][-1]`` only for ``len(ar) > 100``.
+        """
+        i0 = -1
+        i1 = len(ar) - 1
+        while i1 - i0 > 1:
+            i = int((i0 + i1) // 2)
+            if np.isfinite(ar[i]):
+                i0 = i
+            else:
+                i1 = i
+            assert i0 <= i1
+        return i1 if np.isfinite(ar[i1]) else i0
+
+    def _evals_appended_compute(self, minimal_trials=6):
+        """create independent restarts evals-array.
+
+        Only append if the number of remaining trials is at least
+        `minimal_trials`. Hence a standard 2009 dataset which has the
+        instances ``3 * [1,2,3,4,5]`` remains unchanged.
+
+        Details: appends only if ``testbedsettings.current_testbed.instances_are_uniform``.
+        """
+        if (not self._instance_repetitions or
+                len(self.instancenumbers) - self._instance_repetitions < minimal_trials or
+                not testbedsettings.current_testbed.instances_are_uniform):
+            self._evals_appended = self._evals
+            return
+        evals = self._evals.copy()
+        maxevals = []
+        merged_runs = []  # columns to be deleted
+        counts = collections.Counter(self.instancenumbers)  # counters of occurances
+        for i_run, instance_id in enumerate(self.instancenumbers):
+            if instance_id in counts:
+                maxevals += [sum(self._maxevals[self.instancenumbers == instance_id])]
+            if counts.pop(instance_id, 1) == 1:  # instance with a single run or already consumed
+                continue
+            j_runs = []  # find runs with the same instance
+            for j_run in range(i_run + 1, len(self.instancenumbers)):
+                if self.instancenumbers[j_run] == instance_id:
+                    j_runs += [j_run]
+            irow = np.where(np.isfinite(evals[:, i_run + 1]))[0][-1] + 1  # first nonfinite index
+            assert irow > 0  # first entry must always be finite
+            for irow in range(irow, len(evals)):  # complement non-finite rows
+                maxevs = self._maxevals[i_run]
+                for j_run in j_runs:
+                    if np.isfinite(evals[irow][j_run + 1]):
+                        evals[irow][i_run + 1] = maxevs + evals[irow][j_run + 1]
+                        break
+                    maxevs += self._maxevals[j_run]
+            merged_runs += j_runs
+        assert not counts, counts  # all instances must be consumed
+        # remove merged columns
+        evals = evals[:, [i for i in range(len(evals.shape[1]))
+                            if i - 1 not in merged_runs]]
+        self._evals_appended = evals
+        self._maxevals_appended = np.asarray(maxevals)
+
     def _argsort(self, smallest_target_value=-np.inf):
         """return index array for a sorted order of trials.
 
