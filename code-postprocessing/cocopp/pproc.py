@@ -587,6 +587,7 @@ class DataSet(object):
         ert
         evals
         evals_appended
+        evals_are_appended
         evals_with_simulated_restarts
         finalfunvals
         funcId
@@ -1124,7 +1125,7 @@ class DataSet(object):
         try: targets = targets([self.funcId, self.dim])
         except TypeError: pass
         res = []  # res[i] is a list of samplesize evals
-        for evals in self.detEvals(targets, bootstrap=bootstrap):
+        for evals in self.detEvals(targets, copy=True, bootstrap=bootstrap):
             # prepare evals array
             evals.sort()
             indices = np.isfinite(evals)
@@ -1700,6 +1701,12 @@ class DataSet(object):
         return self._instance_multipliers
 
     @property
+    def _instance_repetitions(self):  # -> float
+        """return 0 if all instance number ids are unique, >= 1 otherwise"""
+        # TODO: manage when instancenumbers is not iterable?
+        return len(self.instancenumbers) - len(set(self.instancenumbers))
+
+    @property
     def evals(self):
         """``evals`` contains the central data, number of evaluations.
 
@@ -1726,20 +1733,66 @@ class DataSet(object):
 
     @property
     def evals_appended(self):
-        """like the `evals` property-attribute but here the same instances
+        """like the `evals` property-attribute but here non-unique instances
         are aggregated.
 
-        Aggregation is done by appending the trials in the order of
-        their appearance.
+        The aggregation appends trials with the same instance ID in the
+        order of their appearance.
     """
-        warnings.warn("evals_appended is not yet implemented, returning/using evals")
-        return self._evals
+        warnings.warn("evals_appended is only recently implemented")
+        self._evals_appended_compute()
+        return self._evals_appended
 
-    @property
-    def _instance_repetitions(self):  # -> float
-        """return 0 if all instance number ids are unique, >= 1 otherwise"""
-        # TODO: manage when instancenumbers is not iterable?
-        return len(self.instancenumbers) - len(set(self.instancenumbers))
+    def evals_are_appended(self, minimal_trials=6):
+        """return `True` if `self.evals_appended` consist of appended trials (same instances are appended)
+        """
+        return (self._instance_repetitions and
+                len(self.instancenumbers) - self._instance_repetitions >= minimal_trials and
+                testbedsettings.current_testbed.instances_are_uniform)
+
+    def _evals_appended_compute(self):
+        """create evals-array with appended instances.
+
+        The `evals_appended` array mimics independent restarts.
+        Only append if the number of remaining trials is at least
+        `minimal_trials`. Hence a standard 2009 dataset which has the
+        instances ``3 * [1,2,3,4,5]`` remains unchanged.
+
+        Details: appends only if ``testbedsettings.current_testbed.instances_are_uniform``.
+        """
+        if not self.appended_evals(minimal_trials):
+            self._evals_appended = self._evals
+            return
+        evals = self._evals.copy()
+        maxevals = []
+        merged_runs = []  # columns to be deleted
+        counts = collections.Counter(self.instancenumbers)  # counters of occurances
+        for i_run, instance_id in enumerate(self.instancenumbers):
+            if instance_id in counts:
+                maxevals += [sum(self._maxevals[self.instancenumbers == instance_id])]
+            if counts.pop(instance_id, 1) == 1:  # instance with a single run or already consumed
+                continue
+            j_runs = []  # find runs with the same instance
+            for j_run in range(i_run + 1, len(self.instancenumbers)):
+                if self.instancenumbers[j_run] == instance_id:
+                    j_runs += [j_run]
+            irow = np.where(np.isfinite(evals[:, i_run + 1]))[0][-1] + 1  # first nonfinite index
+            assert irow > 0, (irow, evals.shape)  # first entry must always be finite
+            for irow in range(irow, len(evals)):  # complement non-finite rows
+                maxevs = self._maxevals[i_run]
+                for j_run in j_runs:
+                    if np.isfinite(evals[irow][j_run + 1]):
+                        evals[irow][i_run + 1] = maxevs + evals[irow][j_run + 1]
+                        break
+                    maxevs += self._maxevals[j_run]
+            merged_runs += j_runs
+        assert not counts, (self.instancenumbers, counts)  # all instances must be consumed
+        assert all([i not in merged_runs for i in [0, evals.shape[1] - 1]]), (self.instancenumbers, merged_runs)
+        # remove merged columns
+        evals = evals[:, [i for i in range(len(evals.shape[1]))
+                            if i - 1 not in merged_runs]]
+        self._evals_appended = evals
+        self._maxevals_appended = np.asarray(maxevals)
 
     @staticmethod
     def _largest_finite_index(ar):
@@ -1762,50 +1815,6 @@ class DataSet(object):
                 i1 = i
             assert i0 <= i1
         return i1 if np.isfinite(ar[i1]) else i0
-
-    def _evals_appended_compute(self, minimal_trials=6):
-        """create independent restarts evals-array.
-
-        Only append if the number of remaining trials is at least
-        `minimal_trials`. Hence a standard 2009 dataset which has the
-        instances ``3 * [1,2,3,4,5]`` remains unchanged.
-
-        Details: appends only if ``testbedsettings.current_testbed.instances_are_uniform``.
-        """
-        if (not self._instance_repetitions or
-                len(self.instancenumbers) - self._instance_repetitions < minimal_trials or
-                not testbedsettings.current_testbed.instances_are_uniform):
-            self._evals_appended = self._evals
-            return
-        evals = self._evals.copy()
-        maxevals = []
-        merged_runs = []  # columns to be deleted
-        counts = collections.Counter(self.instancenumbers)  # counters of occurances
-        for i_run, instance_id in enumerate(self.instancenumbers):
-            if instance_id in counts:
-                maxevals += [sum(self._maxevals[self.instancenumbers == instance_id])]
-            if counts.pop(instance_id, 1) == 1:  # instance with a single run or already consumed
-                continue
-            j_runs = []  # find runs with the same instance
-            for j_run in range(i_run + 1, len(self.instancenumbers)):
-                if self.instancenumbers[j_run] == instance_id:
-                    j_runs += [j_run]
-            irow = np.where(np.isfinite(evals[:, i_run + 1]))[0][-1] + 1  # first nonfinite index
-            assert irow > 0  # first entry must always be finite
-            for irow in range(irow, len(evals)):  # complement non-finite rows
-                maxevs = self._maxevals[i_run]
-                for j_run in j_runs:
-                    if np.isfinite(evals[irow][j_run + 1]):
-                        evals[irow][i_run + 1] = maxevs + evals[irow][j_run + 1]
-                        break
-                    maxevs += self._maxevals[j_run]
-            merged_runs += j_runs
-        assert not counts, counts  # all instances must be consumed
-        # remove merged columns
-        evals = evals[:, [i for i in range(len(evals.shape[1]))
-                            if i - 1 not in merged_runs]]
-        self._evals_appended = evals
-        self._maxevals_appended = np.asarray(maxevals)
 
     def _argsort(self, smallest_target_value=-np.inf):
         """return index array for a sorted order of trials.
@@ -1870,22 +1879,26 @@ class DataSet(object):
                 plt.ylabel('number of function evaluations')
         return plt.gca()
 
-    def median_evals(self, target_values=None):
-        """return median for each target, unsuccessful runs count.
+    def median_evals(self, target_values=None, append_instances=True):
+        """return median for each row in `self.evals`, unsuccessful runs count.
 
-        `target_values` is not in effect for now, the median is computed
-        for all target values (rows in `evals` attribute).
+        If ``target_values is not None`` compute the median evaluations to
+        reach the given target values.
 
         Return `np.nan` if the median run was unsuccessful.
 
+        `append_instances` 
+
         Details: copies the evals attribute and sets `nan` to `inf` in
         order to get the median with `nan` values in the sorting.
-
         """
         if target_values is not None:
-            raise NotImplementedError("median_evals is only implemented for "
+            warnings.warn("median_evals was only recently implemented for "
                                       "all target values")
-        evals = self.evals_appended[:, 1:]
+            evals = np.asarray(self.detEvals(target_values, copy=True, append_instances=append_instances))
+        else:
+            evals = self.evals_appended[:, 1:] if append_instances else self.evals  # evals may balance instances
+            evals = evals.copy()
         evals[~numpy.isfinite(evals)] = numpy.inf
         m = numpy.median(evals, 1)
         m[~np.isfinite(m)] = np.nan
@@ -1929,6 +1942,7 @@ class DataSet(object):
         plt.xlim(left=0.85)  # right=max(self.maxevals)
         plt.ylim(bottom=smallest_target if smallest_target is not None else self.precision)
         plt.title("F %d in dimension %d" % (self.funcId, self.dim))
+        plt.grid(True)
         return plt.gca()  # not sure which makes most sense
 
 class DataSetList(list):
