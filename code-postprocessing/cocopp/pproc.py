@@ -668,7 +668,7 @@ class DataSet(object):
         >>> dslist = cocopp.load(infoFile)
           Data consistent according to consistency_check() in pproc.DataSet
         >>> dslist[2].instancenumbers
-        [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5]
+        (1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5)
         >>> dslist[2].evals[-1]  # doctest:+ELLIPSIS
         array([...
         >>> assert (dslist[2].evals[-1])[0] == 1.0e-8
@@ -679,7 +679,7 @@ class DataSet(object):
         >>> dslist2 = cocopp.load(infoFile)
           Data consistent according to consistency_check() in pproc.DataSet
         >>> dslist2[2].instancenumbers
-        [1, 1, 1, 3, 3, 3]
+        (1, 1, 1, 3, 3, 3)
         >>> dslist2[2].evals[-1]  # doctest:+ELLIPSIS
         array([...
         >>> assert (dslist2[2].evals[-1])[0] == 1.0e-8
@@ -962,6 +962,7 @@ class DataSet(object):
 
             self._cut_data()
         # Compute ERT
+        self.instancenumbers = tuple(self.instancenumbers)
         self.computeERTfromEvals()
         
     def _cut_data(self):
